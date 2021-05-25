@@ -2,6 +2,9 @@
 /* eslint-disable no-unreachable */
 import asyncHandler from 'express-async-handler';
 import Order from '../models/orderModel.js';
+import Product from '../models/productModel.js';
+import Razorpay from "razorpay";
+import crypto from "crypto";
 
 // @desc    Create new order
 // @route   POST /api/orders
@@ -70,6 +73,81 @@ const updateOrderToPaid = asyncHandler(async (req, res) => {
   }
 });
 
+const payOrder = asyncHandler(async (req, res) => {
+  const { totalPrice } = req.body;
+  console.log(totalPrice)
+  const razorpay = new Razorpay({
+    key_id: process.env.RAZORPAY_KEYID,
+    key_secret: process.env.RAZORPAY_SECRETID
+  })
+
+  const rpOrder = await razorpay.orders.create({
+    amount: Math.round((totalPrice * 73.25) * 100),
+    currency: 'INR'
+  })
+
+  if (!rpOrder) {
+    res.status(500);
+    throw new Error('Internal server error!');
+  }
+
+  res.json({ ...rpOrder, ordrId: rpOrder.id });
+});
+
+const paymentSuccess = asyncHandler(async (req, res, next) => {
+  console.log("SUCCESS CALLED");
+  const {
+    orderId,
+    razorpayPaymentId,
+    razorpayOrderId,
+    razorpaySignature
+  } = req.body;
+
+  const shasum = crypto.createHmac('sha256', process.env.RAZORPAY_SECRETID);
+  shasum.update(`${razorpayOrderId}|${razorpayPaymentId}`);
+  const digest = shasum.digest('hex');
+
+  if (!digest) {
+    res.status(500);
+    throw new Error('Internal server error');
+  }
+
+  if (digest !== razorpaySignature)
+    return res.status(400).json({ msg: 'Transaction not legit!' });
+
+
+  const order = await Order.findByIdAndUpdate(orderId, {
+    isPaid: true,
+    paidAt: Date.now(),
+    paymentResult: { id: razorpayPaymentId, status: 'success' }
+  });
+
+  console.log(order);
+
+
+  res.json({
+    message: 'success',
+    paymentId: razorpayPaymentId
+  });
+
+  const updateArr = order.orderItems.map(itm => {
+    return {
+      updateOne: {
+        filter: { _id: itm.product },
+        update: { $set: { "countInStock": itm.countInStock - itm.qty } }
+      }
+    }
+  });
+
+  console.log(JSON.stringify(updateArr));
+
+  await Product.bulkWrite([...updateArr]);
+
+
+});
+
+
+
 // @desc    Update order to delivered
 // @route   GET /api/orders/:id/deliver
 // @access  Private/Admin
@@ -105,4 +183,4 @@ const getOrders = asyncHandler(async (req, res) => {
   res.json(orders);
 });
 
-export { addOrderItems, getOrderById, updateOrderToPaid, updateOrderToDelivered, getMyOrders, getOrders };
+export { addOrderItems, getOrderById, updateOrderToPaid, updateOrderToDelivered, getMyOrders, getOrders, payOrder, paymentSuccess };

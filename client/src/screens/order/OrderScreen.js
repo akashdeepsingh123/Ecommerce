@@ -10,10 +10,12 @@ import { getOrderDetails, payOrder, deliverOrder } from '../../store/actions/ord
 import { ORDER_PAY_RESET, ORDER_DELIVER_RESET } from '../../store/constants/orderConstants';
 
 const OrderScreen = ({ match, history }) => {
+  const [loadingPay, setLoadingpay] = useState(false);
   const [sdkReady, setSdkReady] = useState(false);
   const { order, loading, error } = useSelector((state) => state.orderDetails);
   const dispatch = useDispatch();
-  const { loading: loadingPay, success: successPay } = useSelector((state) => state.orderPay);
+  const { success: successPay } = useSelector((state) => state.orderPay);
+  const cart = useSelector((state) => state.cart);
   const { loading: loadingDeliver, success: successDeliver } = useSelector((state) => state.orderDeliver);
   const { userInfo } = useSelector((state) => state.userLogin);
   const orderId = match.params.id;
@@ -29,38 +31,110 @@ const OrderScreen = ({ match, history }) => {
       history.push('/login');
     }
 
-    const addPayPalScript = async () => {
-      const { data: clientId } = await axios.get('/api/config/paypal');
-      const script = document.createElement('script');
-      script.type = 'text/javascript';
-      script.src = `https://www.paypal.com/sdk/js?client-id=${clientId}`;
-      script.async = true;
-      script.onload = () => {
-        setSdkReady(true);
-      };
-      document.body.appendChild(script);
-    };
-
     if (!order || successPay || successDeliver || order._id !== orderId) {
       dispatch({ type: ORDER_PAY_RESET });
       dispatch({ type: ORDER_DELIVER_RESET });
       dispatch(getOrderDetails(orderId));
-    } else if (!order.isPaid) {
-      if (!window.paypal) {
-        addPayPalScript();
-      } else {
-        setSdkReady(true);
-      }
     }
   }, [dispatch, orderId, successPay, successDeliver, order, history, userInfo]);
+
+  const deliverHandler = () => {
+    dispatch(deliverOrder(order));
+  };
+
+  function loadScript(src) {
+    return new Promise((resolve) => {
+      const script = document.createElement('script');
+      script.src = src;
+      script.onload = () => {
+        resolve(true);
+      };
+      script.onerror = () => {
+        resolve(false);
+      };
+      document.body.appendChild(script);
+    });
+  }
+
+  const toggleLoadingPay = () => {
+    setLoadingpay((lp) => !lp);
+  };
 
   const successPaymentHandler = (paymentResult) => {
     console.log(paymentResult);
     dispatch(payOrder(orderId, paymentResult));
   };
 
-  const deliverHandler = () => {
-    dispatch(deliverOrder(order));
+  const payNow = async () => {
+    toggleLoadingPay();
+    try {
+      const res = await loadScript('https://checkout.razorpay.com/v1/checkout.js');
+
+      if (!res) {
+        alert('Razorpay SDK failed to load. Are you online?');
+        toggleLoadingPay();
+        return;
+      }
+      // creating a new order
+      console.log(cart);
+      const result = await axios.post(`/api/orders/payorder`, {
+        totalPrice: cart.cartItems.reduce((acc, item) => acc + item.price * item.qty, 0)
+      });
+
+      if (!result) {
+        alert('Server error. Are you online?');
+        toggleLoadingPay();
+        return;
+      }
+      // Getting the order details back
+      const { amount, ordrId, currency } = result.data;
+
+      const options = {
+        key: process.env.RAZORPAY_ID,
+        amount: amount.toString(),
+        currency,
+        name: 'My Shop',
+        description: 'Order Payment',
+        order_id: ordrId,
+        handler: async (response) => {
+          try {
+            const data = {
+              orderId,
+              razorpayPaymentId: response.razorpay_payment_id,
+              razorpayOrderId: response.razorpay_order_id,
+              razorpaySignature: response.razorpay_signature
+            };
+
+            const resp = await axios.post('/api/orders/payment/success', data);
+            const { message } = resp.data;
+            if (message === 'success') {
+              successPaymentHandler(message);
+            } else {
+              toggleLoadingPay();
+              alert(message);
+            }
+          } catch (err) {
+            console.log(err);
+            toggleLoadingPay();
+          }
+        },
+        modal: {
+          ondismiss: toggleLoadingPay
+        },
+        prefill: {
+          email: userInfo.email,
+          name: userInfo.name
+        },
+        theme: {
+          color: '#8739f9'
+        }
+      };
+
+      const paymentObject = new window.Razorpay(options);
+      paymentObject.open();
+    } catch (err) {
+      console.log(err);
+    }
   };
 
   return !loading ? (
@@ -167,12 +241,9 @@ const OrderScreen = ({ match, history }) => {
 
                 {!order.isPaid && (
                   <ListGroup.Item>
-                    {loadingPay && <Loader />}
-                    {!sdkReady ? (
-                      <Loader />
-                    ) : (
-                      <PayPalButton amount={order.totalPrice} onSuccess={successPaymentHandler} />
-                    )}
+                    <Button className="btn-block" onClick={payNow}>
+                      {loadingPay ? <Loader /> : 'Pay now'}
+                    </Button>
                   </ListGroup.Item>
                 )}
 

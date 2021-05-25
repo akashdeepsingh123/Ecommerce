@@ -80,18 +80,9 @@ export const payOrder = (orderId, paymentResult) => async (dispatch, getState) =
     dispatch({
       type: ORDER_PAY_REQUEST
     });
-    const {
-      userLogin: { userInfo }
-    } = getState();
-    const { data } = await put(`/api/orders/${orderId}/pay`, paymentResult, {
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${userInfo.token}`
-      }
-    });
     dispatch({
       type: ORDER_PAY_SUCCESS,
-      payload: data
+      payload: { orderId, paymentResult }
     });
   } catch (error) {
     dispatch({
