@@ -67,12 +67,12 @@ export const deleteProduct = (id) => async (dispatch, getState) => {
     const {
       userLogin: { userInfo }
     } = getState();
-    await delete (`/api/products/${id}`,
-    {
-      headers: {
-        Authorization: `Bearer ${userInfo.token}`
-      }
-    });
+    await axios.delete(`/api/products/${id}`,
+      {
+        headers: {
+          Authorization: `Bearer ${userInfo.token}`
+        }
+      });
     dispatch({
       type: PRODUCT_DELETE_SUCCESS
     });
