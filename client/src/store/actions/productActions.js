@@ -1,4 +1,4 @@
-import { get, put, post } from 'axios';
+import axios, { get, put, post } from 'axios';
 import {
   PRODUCT_LIST_REQUEST,
   PRODUCT_LIST_SUCCESS,
@@ -67,12 +67,11 @@ export const deleteProduct = (id) => async (dispatch, getState) => {
     const {
       userLogin: { userInfo }
     } = getState();
-    await axios.delete(`/api/products/${id}`,
-      {
-        headers: {
-          Authorization: `Bearer ${userInfo.token}`
-        }
-      });
+    await axios.delete(`/api/products/${id}`, {
+      headers: {
+        Authorization: `Bearer ${userInfo.token}`
+      }
+    });
     dispatch({
       type: PRODUCT_DELETE_SUCCESS
     });
