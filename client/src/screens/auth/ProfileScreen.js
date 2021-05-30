@@ -79,7 +79,7 @@ const ProfileScreen = ({ history }) => {
             <Form.Label>Confirm Password</Form.Label>
             <Form.Control
               type="password"
-              name="passwordConfirm"
+              name="confirmPassword"
               placeholder="Confirm password"
               value={confirmPassword}
               onChange={changeHandler}
