@@ -93,9 +93,27 @@ const OrderScreen = ({ match, history }) => {
         key: process.env.RAZORPAY_ID,
         amount: amount.toString(),
         currency,
-        name: 'My Shop',
+        name: 'Grocery Shop',
         description: 'Order Payment',
         order_id: ordrId,
+        config: {
+          display: {
+            blocks: {
+              banks: {
+                name: `Pay via ${order.paymentMethod}`,
+                instruments: [
+                  {
+                    method: `${order.paymentMethod.toLowerCase()}`
+                  }
+                ]
+              }
+            },
+            sequence: ['block.banks'],
+            preferences: {
+              show_default_blocks: false
+            }
+          }
+        },
         handler: async (response) => {
           try {
             const data = {
